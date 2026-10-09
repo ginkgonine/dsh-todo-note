@@ -125,6 +125,79 @@ test('start_chat creates ordinary default-policy root and admits user prompt', a
   assert.deepEqual(f.creates[1], { cwd: '/tmp/project' });
 });
 
+test('start_chat uses explicit workspace identity without mixing cwd or policy fields', async () => {
+  const f = await fixture();
+  f.operations.workspaceRegistry = {
+    get: id => id === 'workspace-project' ? { id, path: '/tmp/project' } : undefined,
+    resolveByPath: async () => { throw new Error('explicit workspace must not resolve default cwd'); },
+  };
+  await f.operations.execute({ action: 'create', title: 'Workspace task' });
+  await f.operations.execute({ action: 'start_chat', id: 'note-1', workspaceId: 'workspace-project' });
+  assert.deepEqual(f.creates, [{ workspaceId: 'workspace-project' }]);
+  assert.equal(f.store.get('note-1').sessionId, 'session-1');
+  await assert.rejects(f.operations.execute({ action: 'start_chat', id: 'note-1', workspaceId: 'missing' }), { code: 'WORKSPACE_NOT_FOUND' });
+  await assert.rejects(f.operations.execute({ action: 'start_chat', id: 'note-1', workspaceId: 'workspace-project', cwd: '/tmp/project' }), { code: 'INVALID_INPUT' });
+  assert.equal(f.creates.length, 1);
+});
+
+test('legacy cwd resolves registered workspace, and only unowned paths remain ungrouped', async () => {
+  const f = await fixture(); const paths = [];
+  f.operations.workspaceRegistry = { async resolveByPath(path) {
+    paths.push(path);
+    return path === '/tmp/project-link/' ? { id: 'workspace-project', path: '/tmp/project' } : undefined;
+  } };
+  await f.operations.execute({ action: 'create', title: 'Task' });
+  await f.operations.execute({ action: 'start_chat', id: 'note-1', cwd: '/tmp/project-link/' });
+  await f.operations.execute({ action: 'start_chat', id: 'note-1', cwd: '/tmp/unowned' });
+  assert.deepEqual(paths, ['/tmp/project-link/', '/tmp/unowned']);
+  assert.deepEqual(f.creates, [{ workspaceId: 'workspace-project' }, { cwd: '/tmp/unowned' }]);
+});
+
+test('workspace lookup failures and cancellation never create an ungrouped fallback', async () => {
+  const f = await fixture();
+  await f.operations.execute({ action: 'create', title: 'Task' });
+  f.operations.workspaceRegistry = { resolveByPath: async () => { throw new Error('registry unavailable'); } };
+  await assert.rejects(f.operations.execute({ action: 'start_chat', id: 'note-1' }), /registry unavailable/);
+  const abort = new AbortController();
+  f.operations.workspaceRegistry.resolveByPath = async () => { abort.abort(); return { id: 'workspace-project' }; };
+  await assert.rejects(f.operations.execute({ action: 'start_chat', id: 'note-1' }, abort.signal), { code: 'CANCELLED' });
+  assert.equal(f.creates.length, 0); assert.equal(f.prompts.length, 0);
+});
+
+test('installed Session controller uses workspace directory and attaches membership before prompt', async () => {
+  const base = '/home/ubuntu/.nvm/versions/node/v24.21.0/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai';
+  const { SessionCommandController } = await import(`${base}/dsh-api-session-controller/lib/types/commands.js`);
+  const f = await fixture(); const members = [], roots = [];
+  const workspace = { id: 'workspace-project', path: DEFAULT_CWD,
+    async attachSession(id) { members.push(id); } };
+  const registry = { get: id => id === workspace.id ? workspace : undefined };
+  const commands = new SessionCommandController({ workspaceRegistry: registry }, {
+    async ensureSession(id, cwd, adopting, preset) { roots.push({ id, cwd, adopting, preset }); return { session: { id } }; },
+    presetForSession: () => undefined,
+  }, '/tmp/different-default');
+  f.operations.workspaceRegistry = registry;
+  f.controller.create = input => commands.create(input);
+  f.controller.prompt = async input => { assert.deepEqual(members, [input.sessionId]); return { accepted: true }; };
+  await f.operations.execute({ action: 'create', title: 'Task' });
+  const result = await f.operations.execute({ action: 'start_chat', id: 'note-1', workspaceId: workspace.id });
+  assert.equal(roots[0].cwd, DEFAULT_CWD);
+  assert.equal(roots[0].adopting, false); assert.equal(roots[0].preset, undefined);
+  assert.deepEqual(members, [result.sessionId]);
+});
+
+test('workspace attachment failure keeps controller partial-session details for recovery', async () => {
+  const f = await fixture();
+  await f.operations.execute({ action: 'create', title: 'Task' });
+  f.operations.workspaceRegistry = { get: id => ({ id }) };
+  f.controller.create = async () => { throw Object.assign(new Error('attachment failed'), {
+    code: 'session/workspace-attach-failed', details: { sessionId: 'partial-session', workspaceId: 'workspace-project' },
+  }); };
+  await assert.rejects(f.operations.execute({ action: 'start_chat', id: 'note-1', workspaceId: 'workspace-project' }), error => {
+    assert.equal(error.details.sessionId, 'partial-session'); return true;
+  });
+  assert.equal(f.prompts.length, 0);
+});
+
 test('failed prompt preserves created session identity and note link', async () => {
   const f = await fixture();
   await f.operations.execute({ action: 'create', title: 'Task' });
@@ -155,6 +228,7 @@ test('HTTP endpoint guards every request and handles malformed requests', async 
 test('Host registration tool and UI share data, results and failures; cleanup closes domain', async () => {
   const storage = storageMock(), cleanups = []; let route, tool;
   const ctx = { storageDomain: storage,
+    workspaceRegistry: { list: () => [{ id: 'workspace-project', title: 'Project', path: DEFAULT_CWD }], get: id => id === 'workspace-project' ? { id, path: DEFAULT_CWD } : undefined, resolveByPath: async () => undefined },
     connection: { requestRejection: () => undefined },
     sessionController: { create: async () => ({ sessionId: 'new-session' }), prompt: async () => ({ accepted: true }) },
     webServer: { register(value) { route = value; return () => { route = undefined; }; } },
@@ -175,7 +249,10 @@ test('Host registration tool and UI share data, results and failures; cleanup cl
   assert.deepEqual(await tool.execute(badInput, exec), (await request(route.handler, { value: badInput })).value);
   assert.equal(tool.isConcurrencySafe({ action: 'list' }), true);
   assert.equal(tool.isConcurrencySafe({ action: 'delete' }), false);
-  const launch = await tool.execute({ action: 'start_chat', id: created.note.id }, exec);
+  const workspaceList = await request(route.handler, { value: { action: 'list_workspaces' } });
+  assert.deepEqual(await tool.execute({ action: 'list_workspaces' }, exec), workspaceList.value);
+  assert.deepEqual(workspaceList.value.workspaces, [{ id: 'workspace-project', title: 'Project', path: DEFAULT_CWD }]);
+  const launch = await tool.execute({ action: 'start_chat', id: created.note.id, workspaceId: 'workspace-project' }, exec);
   assert.equal(launch.sessionId, 'new-session');
   assert.deepEqual(tool.output.render({}, launch), [{ type: 'text', text: JSON.stringify(launch) }]);
   for (const cleanup of cleanups.reverse()) await cleanup();
