@@ -1,0 +1,16 @@
+{
+  "name": "@local/dsh-todo-note",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Persistent TODO notes with agent conversations in the DSH sidebar.",
+  "type": "module",
+  "icon": "./icon.svg",
+  "exports": {".": "./index.js", "./host": "./host-calendar.js", "./client": "./client.js", "./package.json": "./package.json", "./locale/*.json": "./locale/*.json"},
+  "files": ["index.js", "host.js", "host-calendar.js", "store.js", "storage.js", "storage-calendar.js", "client.js", "cordis.patch.yml", "icon.svg", "locale", "README.md"],
+  "dependencies": {"zod": "4.6.5"},
+  "scripts": {"test": "node --test"},
+  "dsh": {
+    "bundle": {"patch": "./cordis.patch.yml"},
+    "client": {"platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-conversation"]}
+  }
+}

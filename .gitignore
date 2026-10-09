@@ -1,0 +1,31 @@
+# Dependencies and generated artifacts
+node_modules/
+dist/
+build/
+coverage/
+*.tgz
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+
+# Runtime data and temporary test storage
+.test-storage-*/
+.test-deadline-*/
+*.log
+storage/
+data/
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+- insert:
+    - id: dsh-todo-note
+      name: '/home/ubuntu/dsh-todo-note/host-calendar.js'
+      config: {}
