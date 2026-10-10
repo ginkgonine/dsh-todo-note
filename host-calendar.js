@@ -5,7 +5,8 @@ import { openTodoNoteStore, TodoNoteError, dueDateSchema } from './storage-calen
 
 export const name = 'todo-note';
 export const inject = ['storageDomain', 'webServer', 'connection', 'tools', 'sessionController', 'workspaceRegistry'];
-export const DEFAULT_CWD = '/home/ubuntu/dsh-todo-note';
+// Portable fallback for legacy tool calls; the UI always selects a workspace.
+export const DEFAULT_CWD = process.cwd();
 export const Config = z.object({ cwd: z.string().refine(isAbsolute).default(DEFAULT_CWD) });
 
 const title = z.string().trim().min(1).max(500);
