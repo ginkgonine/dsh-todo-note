@@ -31,11 +31,22 @@ window.__ModuleLoader__.load({
         .sort((a,b)=>Number(a.completed)-Number(b.completed)||b.createdAt.localeCompare(a.createdAt)||a.id.localeCompare(b.id));
     }
     // calendar-model:end
+    // popover-model:start — placement uses only this plugin's own trigger rectangle.
+    function popoverPlacement(rect,viewportWidth,viewportHeight) {
+      const width=Math.min(360,Math.max(0,viewportWidth-24));
+      const anchorTop=Math.max(12,Math.min(rect.top,viewportHeight-12));
+      return {left:Math.max(12,Math.min(rect.left,viewportWidth-width-12)),bottom:viewportHeight-anchorTop+8,width,height:Math.max(0,Math.min(680,anchorTop-20))};
+    }
+    function pointerIsOutside(path,card,trigger) {
+      return !path.includes(card)&&!path.includes(trigger);
+    }
+    // popover-model:end
     const dictionaries = {
       en: {collapseCalendar:'Collapse calendar', dueDate:'Due date', clearDate:'Clear date', calendar:'Calendar', list:'Task list', today:'Today', overdue:'Overdue', dueToday:'Due today', prevMonth:'Previous month', nextMonth:'Next month', allDates:'All dates', dueOn:'Due on', noTasksOnDate:'No tasks due on this day.', weekday0:'Mo', weekday1:'Tu', weekday2:'We', weekday3:'Th', weekday4:'Fr', weekday5:'Sa', weekday6:'Su', title:'TODO Notes', todo:'TODO', add:'Add a task', task:'Task title', note:'Notes', notePlaceholder:'Details, ideas, or instructions for the agent…', save:'Save', cancel:'Cancel', edit:'Edit', remove:'Delete', all:'All', active:'To do', done:'Completed', empty:'No tasks here. Add one below to get started.', loading:'Loading…', refresh:'Refresh', search:'Search tasks and notes', closeSearch:'Close search', start:'Start agent conversation', open:'Open conversation', workspace:'Workspace', chooseWorkspace:'Select a workspace', noWorkspaces:'No workspaces. Add one in the sidebar first.', workspaceHelp:'The selected workspace determines the working directory and conversation group.', launchHelp:'Creates a new conversation and sends the saved note. Normal DSH permissions still apply.', launch:'Create and send', busy:'Working…', close:'Close', failed:'Request failed', count:'tasks', complete:'Mark completed', undo:'Mark incomplete', unsaved:'Save or cancel your changes first.', partial:'Conversation created, but the note could not be sent. Open it to continue.'},
       zh: {collapseCalendar:'收起日历', dueDate:'截止日期', clearDate:'清除日期', calendar:'日历', list:'待办列表', today:'今天', overdue:'已逾期', dueToday:'今天到期', prevMonth:'上个月', nextMonth:'下个月', allDates:'全部日期', dueOn:'到期', noTasksOnDate:'这一天没有到期的待办。', weekday0:'一', weekday1:'二', weekday2:'三', weekday3:'四', weekday4:'五', weekday5:'六', weekday6:'日', title:'TODO 笔记', todo:'TODO', add:'添加待办', task:'待办标题', note:'笔记', notePlaceholder:'详细说明、想法，或希望 agent 执行的内容…', save:'保存', cancel:'取消', edit:'编辑', remove:'删除', all:'全部', active:'待完成', done:'已完成', empty:'还没有待办，在底部添加一条吧。', loading:'正在加载…', refresh:'刷新', search:'搜索待办和笔记', closeSearch:'收起搜索', start:'发起 agent 对话', open:'打开对话', workspace:'工作区', chooseWorkspace:'请选择工作区', noWorkspaces:'暂无工作区，请先在侧边栏添加。', workspaceHelp:'使用所选工作区的固定工作目录，新对话归入该工作区。', launchHelp:'创建新对话，并发送已保存的笔记。仍遵循 DSH 的常规权限设置。', launch:'创建并发送', busy:'处理中…', close:'关闭', failed:'请求失败', count:'项待办', complete:'标记完成', undo:'标记未完成', unsaved:'请先保存或取消修改。', partial:'对话已创建，但笔记未能发送。可以打开对话继续。'}
     };
     const css = `
+.tn-entry[aria-expanded=true]{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-base));color:var(--dsw-alias-brand-primary)}
 .tn-calendar{margin:0 0 12px;padding:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 60%,transparent)}.tn-cal-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}.tn-cal-head strong{font-size:14px;font-weight:500}.tn-cal-head .tn-tools{gap:2px}.tn-cal-head button{font-size:12px;padding:2px 7px}.tn-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.tn-cal-weekday{text-align:center;font-size:11px;color:var(--dsw-alias-label-secondary);line-height:24px}.tn-page .tn-cal-day{position:relative;padding:4px 0 12px;min-height:34px;font-size:12px;border-color:transparent}.tn-cal-day[data-today=true]{border-color:var(--dsw-alias-brand-primary)}.tn-cal-day[aria-pressed=true]{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-brand-primary);font-weight:600}.tn-cal-dot{position:absolute;bottom:4px;left:50%;width:4px;height:4px;border-radius:50%;transform:translateX(-50%);background:var(--dsw-alias-label-secondary)}.tn-cal-dot[data-pending=true]{background:var(--dsw-alias-brand-primary)}.tn-cal-caption{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:8px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px}.tn-cal-caption button{font-size:11px;padding:2px 6px}.tn-deadline{margin:5px 0 0;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:18px}.tn-deadline[data-state=overdue]{color:var(--dsw-alias-state-error-primary)}.tn-deadline[data-state=today]{color:var(--dsw-alias-brand-primary)}
 .tn-floating{position:fixed;left:12px;bottom:64px;box-sizing:border-box;width:min(360px,calc(100vw - 24px));height:min(680px,calc(100dvh - 100px));border:1px solid var(--dsw-alias-border-l2);border-radius:16px;background:var(--dsw-alias-bg-base);box-shadow:0 8px 28px color-mix(in srgb,var(--dsw-alias-label-primary) 12%,transparent);pointer-events:auto;overflow:hidden;z-index:20}
 @supports(backdrop-filter:blur(16px)){.tn-floating{background:color-mix(in srgb,var(--dsw-alias-bg-base) 90%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}}
@@ -56,8 +67,18 @@ window.__ModuleLoader__.load({
         let opened = false, trigger = null;
         const subscribers = new Set();
         const subscribe = fn => {subscribers.add(fn);return () => subscribers.delete(fn);};
-        function show(value) {opened=value;for(const fn of subscribers)fn();if(!value)trigger?.focus();}
-        ctx.effect(() => () => {opened=false;subscribers.clear();trigger=null;});
+        let position=null;
+        const positionSubscribers=new Set();
+        const subscribePosition=fn=>{positionSubscribers.add(fn);return()=>positionSubscribers.delete(fn);};
+        function updatePosition(){
+          if(!trigger)return;
+          const next=popoverPlacement(trigger.getBoundingClientRect(),window.innerWidth,window.innerHeight);
+          if(position&&Object.keys(next).every(key=>next[key]===position[key]))return;
+          position=next;for(const fn of positionSubscribers)fn();
+        }
+        function setTrigger(element){trigger=element;if(element&&opened)updatePosition();}
+        function show(value,{restoreFocus=true}={}) {opened=value;for(const fn of subscribers)fn();if(!value&&restoreFocus)trigger?.focus();}
+        ctx.effect(() => () => {opened=false;subscribers.clear();positionSubscribers.clear();trigger=null;position=null;});
         function useT() {
           useSyncExternalStore(cb => ctx.locale.subscribe(cb), () => ctx.locale.getSnapshot());
           return translate;
@@ -78,7 +99,7 @@ window.__ModuleLoader__.load({
         }
         function Footer({wide}) {
           const t=useT(), isOpen=useSyncExternalStore(subscribe,()=>opened);
-          return h('button',{ref:el=>{trigger=el;},className:'tn-entry',title:t('title'),'aria-label':t('title'),'aria-expanded':isOpen,'aria-controls':'tn-floating-card',onClick:()=>show(!opened)},h('style',null,css),h(Glyph,{kind:'todo'}),wide&&h('span',null,t('todo')));
+          return h('button',{ref:setTrigger,className:'tn-entry',title:t('title'),'aria-label':t('title'),'aria-expanded':isOpen,'aria-controls':'tn-floating-card',onClick:()=>{if(!opened)updatePosition();show(!opened);}},h('style',null,css),h(Glyph,{kind:'todo'}),wide&&h('span',null,t('todo')));
         }
         function Page() {
           const t=useT();
@@ -195,11 +216,26 @@ window.__ModuleLoader__.load({
         }
         function Card() {
           const isOpen=useSyncExternalStore(subscribe,()=>opened),card=useRef(null),cardComposing=useRef(false);
-          useEffect(()=>{if(isOpen)card.current?.focus();},[isOpen]);
+          const placement=useSyncExternalStore(subscribePosition,()=>position);
+          useEffect(()=>{
+            if(!isOpen)return;
+            card.current?.focus();updatePosition();
+            function outsidePointer(event){
+              if(event.button!==0||pointerIsOutside(event.composedPath(),card.current,trigger)===false)return;
+              // Capture observes only: leave the workspace click and its focus untouched.
+              show(false,{restoreFocus:false});
+            }
+            document.addEventListener('pointerdown',outsidePointer,true);
+            window.addEventListener('resize',updatePosition);
+            window.addEventListener('scroll',updatePosition,true);
+            const observer=typeof ResizeObserver==='function'?new ResizeObserver(updatePosition):null;
+            if(trigger)observer?.observe(trigger);
+            return()=>{document.removeEventListener('pointerdown',outsidePointer,true);window.removeEventListener('resize',updatePosition);window.removeEventListener('scroll',updatePosition,true);observer?.disconnect();};
+          },[isOpen]);
           if(!isOpen)return null;
-          return h('aside',{id:'tn-floating-card',className:'tn-floating',ref:card,tabIndex:-1,'aria-label':translate('title'),onCompositionStartCapture:()=>{cardComposing.current=true;},onCompositionEndCapture:()=>{cardComposing.current=false;},onKeyDown:e=>{if(e.key==='Escape'&&!e.nativeEvent.isComposing&&!cardComposing.current&&e.keyCode!==229){e.stopPropagation();show(false);}}},h(Page));
+          return h('aside',{id:'tn-floating-card',className:'tn-floating',ref:card,style:placement,tabIndex:-1,'aria-label':translate('title'),onCompositionStartCapture:()=>{cardComposing.current=true;},onCompositionEndCapture:()=>{cardComposing.current=false;},onKeyDown:e=>{if(e.key==='Escape'&&!e.nativeEvent.isComposing&&!cardComposing.current&&e.keyCode!==229){e.stopPropagation();show(false);}}},h(Page));
         }
-        ctx.slots.inject('shell.overlay',()=>ctx.slots.register({name:'shell.overlay',id:'todo-note-card-calendar-v2',order:20},Card));
+        ctx.slots.inject('shell.overlay',()=>ctx.slots.register({name:'shell.overlay',id:'todo-note-card-dismiss-v1',order:20},Card));
         ctx.slots.inject('sidebar.footer.action',()=>ctx.slots.register({name:'sidebar.footer.action',id:'todo-note',order:10,label:()=>translate('todo')},Footer));
       }
     };
