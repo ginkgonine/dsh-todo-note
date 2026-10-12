@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-todo-note",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Persistent TODO notes with agent conversations in the DSH sidebar.",
   "type": "module",
